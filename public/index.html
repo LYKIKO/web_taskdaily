@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TaskDaily</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
     <link rel="TaskDaily" href="icon.jfif" type="image/x-icon">
     <style>
         * {
@@ -17,7 +17,6 @@
             color: #f8fafc;
             min-height: 100vh;
         }
-        /* Mobile Input fix to stop auto-zoom */
         input, select, textarea {
             font-size: 16px !important;
         }
@@ -29,7 +28,7 @@
         }
         .custom-scrollbar::-webkit-scrollbar { width: 4px; }
         .custom-scrollbar::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 999px; }
-        
+
         .modal-backdrop {
             background: rgba(4, 6, 12, 0.85);
             backdrop-filter: blur(10px);
@@ -53,6 +52,101 @@
             left: 7.5px; top: 3.5px; width: 5px; height: 11px;
             border: solid white; border-width: 0 2px 2px 0; transform: rotate(45deg);
         }
+
+        /* ===== Live Clock — flip-digit transform ===== */
+        .clock-font { font-family: 'Space Grotesk', 'Plus Jakarta Sans', sans-serif; }
+
+        .flip-clock {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            perspective: 500px;
+        }
+
+        .digit-slot {
+            position: relative;
+            width: 22px;
+            height: 30px;
+            overflow: hidden;
+            border-radius: 6px;
+            background: linear-gradient(180deg, rgba(59,130,246,0.14), rgba(15,23,42,0.4));
+            border: 1px solid rgba(59,130,246,0.25);
+            box-shadow: inset 0 0 8px rgba(59,130,246,0.12);
+        }
+
+        @media (min-width: 640px) {
+            .digit-slot { width: 26px; height: 36px; }
+        }
+
+        .digit-slot span {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+            letter-spacing: -0.02em;
+            color: #eff6ff;
+            text-shadow: 0 0 10px rgba(96,165,250,0.85);
+            transform-origin: center;
+            will-change: transform, opacity;
+        }
+
+        @media (min-width: 640px) {
+            .digit-slot span { font-size: 22px; }
+        }
+
+        .digit-slot span.digit-pop {
+            animation: digitPop 0.32s cubic-bezier(.34,1.56,.64,1);
+        }
+
+        @keyframes digitPop {
+            0%   { transform: translateY(-60%) scale(0.6); opacity: 0; }
+            55%  { transform: translateY(6%) scale(1.08); opacity: 1; }
+            100% { transform: translateY(0) scale(1); opacity: 1; }
+        }
+
+        .clock-colon {
+            font-weight: 700;
+            font-size: 18px;
+            color: #60a5fa;
+            animation: colonBlink 1s steps(1) infinite;
+            text-shadow: 0 0 8px rgba(96,165,250,0.7);
+        }
+
+        @media (min-width: 640px) {
+            .clock-colon { font-size: 22px; }
+        }
+
+        @keyframes colonBlink {
+            0%, 49% { opacity: 1; }
+            50%, 100% { opacity: 0.25; }
+        }
+
+        .meridiem-pill {
+            font-size: 10px;
+            font-weight: 800;
+            letter-spacing: 0.08em;
+            color: #93c5fd;
+            background: rgba(59,130,246,0.12);
+            border: 1px solid rgba(59,130,246,0.3);
+            border-radius: 999px;
+            padding: 3px 7px;
+            margin-left: 4px;
+        }
+
+        .live-pulse-dot {
+            width: 6px; height: 6px; border-radius: 999px;
+            background: #34d399;
+            box-shadow: 0 0 8px rgba(52,211,153,0.9);
+            animation: pulseDot 1.6s ease-in-out infinite;
+        }
+
+        @keyframes pulseDot {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.45; transform: scale(0.7); }
+        }
     </style>
 </head>
 <body class="flex flex-col items-center justify-start p-3 sm:p-6 md:p-10 pb-32 selection:bg-blue-600 selection:text-white">
@@ -60,16 +154,24 @@
     <div class="fixed top-[-100px] left-1/2 -translate-x-1/2 w-[100vw] h-[300px] bg-blue-600/10 blur-[120px] pointer-events-none -z-10 rounded-full"></div>
 
     <main class="w-full max-w-lg md:max-w-xl space-y-4">
-        
-        <!-- Header -->
+
+        <!-- Header with Live Clock -->
         <div class="glass-card rounded-3xl p-5 sm:p-7 shadow-2xl relative overflow-hidden">
             <div class="flex items-center justify-between gap-4">
-                <div class="space-y-1.5 flex-1">
-                    <div class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-400 text-[10px] font-bold tracking-widest uppercase">
-                        <span class="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse"></span>
-                        Phnom Penh Time
+                <div class="space-y-2 flex-1 min-w-0">
+                    <div class="flex items-center gap-1.5">
+                        <span class="live-pulse-dot"></span>
+                        <span class="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-widest">Live · Phnom Penh</span>
                     </div>
+
                     <h1 class="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">TaskDaily</h1>
+
+                    <!-- Real-Time Flip Clock -->
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <div id="flip-clock" class="flip-clock clock-font"></div>
+                        <span id="meridiem" class="meridiem-pill">AM</span>
+                    </div>
+
                     <p id="live-date" class="text-xs sm:text-sm text-slate-400 font-medium">Loading date...</p>
                 </div>
 
@@ -112,11 +214,10 @@
         <svg class="w-8 h-8" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="M12 4.5v15m7.5-7.5h-15" /></svg>
     </button>
 
-    <!-- Mobile-Optimized Modal -->
+    <!-- Mobile-Optimized Modal with End Time Toggle Support -->
     <div id="task-modal" class="fixed inset-0 modal-backdrop z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 opacity-0 pointer-events-none transition-opacity duration-300">
-        <!-- Slides up from bottom on mobile, pops in center on desktop -->
-        <div class="glass-card w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-7 shadow-2xl transform translate-y-full sm:translate-y-0 sm:scale-95 transition-transform duration-300 border-t sm:border border-slate-700/60" id="modal-box">
-            
+        <div class="glass-card w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl p-6 sm:p-7 shadow-2xl transform translate-y-full sm:translate-y-0 sm:scale-95 transition-transform duration-300 border-t sm:border border-slate-700/60 max-h-[90vh] overflow-y-auto custom-scrollbar" id="modal-box">
+
             <div class="flex items-center justify-between pb-4 border-b border-slate-800">
                 <h3 class="text-xl font-bold text-white tracking-tight">New Task</h3>
                 <button onclick="closeModal()" class="text-slate-400 hover:text-white p-2 rounded-xl bg-slate-900/60 border border-slate-800">
@@ -124,36 +225,71 @@
                 </button>
             </div>
 
-            <form id="create-task-form" class="space-y-5 pt-5">
-                <div class="space-y-2">
+            <form id="create-task-form" class="space-y-4 pt-4">
+                <div class="space-y-1.5">
                     <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Title</label>
-                    <input type="text" id="task-input" placeholder="What needs to be done?" required
-                           class="w-full bg-slate-900/80 border border-slate-800 text-slate-100 placeholder-slate-500 rounded-xl px-4 py-4 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all" />
+                    <input type="text" id="task-input" placeholder="e.g., Study Session" required
+                           class="w-full bg-slate-900/80 border border-slate-800 text-slate-100 placeholder-slate-500 rounded-xl px-4 py-3.5 focus:outline-none focus:border-blue-500 transition-all" />
                 </div>
 
-                <div class="grid grid-cols-2 gap-4">
-                    <div class="space-y-2">
-                        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Type</label>
-                        <select id="task-type" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-3 py-4 focus:outline-none focus:border-blue-500 transition-all">
-                            <option value="daily">Daily Reset</option>
-                            <option value="custom">One-time</option>
-                        </select>
-                    </div>
+                <div class="space-y-1.5">
+                    <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Type</label>
+                    <select id="task-type" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-3 py-3.5 focus:outline-none focus:border-blue-500 transition-all">
+                        <option value="daily">Daily Reset</option>
+                        <option value="custom">One-time</option>
+                    </select>
+                </div>
 
-                    <div class="space-y-2">
-                        <div class="space-y-2">
-                        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Time</label>
-                        <select id="task-time" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-3 py-4 focus:outline-none focus:border-blue-500 transition-all">
-                            <option value="Anytime">Anytime</option>
-                            <option value="1:00 AM">1:00 AM</option>
-                            <option value="2:00 AM">2:00 AM</option>
-                            <option value="3:00 AM">3:00 AM</option>
-                            <option value="4:00 AM">4:00 AM</option>
-                            <option value="5:00 AM">5:00 AM</option>
+                <!-- Toggle Range Checkbox -->
+                <div class="flex items-center justify-between bg-slate-900/50 p-3 rounded-xl border border-slate-800/80">
+                    <span class="text-xs font-semibold text-slate-300">Add End Time Range (e.g. 10AM - 11AM)</span>
+                    <label class="relative inline-flex items-center cursor-pointer">
+                        <input type="checkbox" id="range-toggle" onchange="toggleRangeInputs(this.checked)" class="sr-only peer">
+                        <div class="w-9 h-5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                </div>
+
+                <!-- Single Time Selection View -->
+                <div id="single-time-container" class="space-y-1.5">
+                    <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Time</label>
+                    <select id="task-time" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-3 py-3.5 focus:outline-none focus:border-blue-500 transition-all">
+                        <option value="Anytime">Anytime</option>
+                        <option value="1:00 AM">1:00 AM</option>
+                        <option value="2:00 AM">2:00 AM</option>
+                        <option value="3:00 AM">3:00 AM</option>
+                        <option value="4:00 AM">4:00 AM</option>
+                        <option value="5:00 AM">5:00 AM</option>
+                        <option value="6:00 AM">6:00 AM</option>
+                        <option value="7:00 AM">7:00 AM</option>
+                        <option value="8:00 AM">8:00 AM</option>
+                        <option value="9:00 AM">9:00 AM</option>
+                        <option value="10:00 AM">10:00 AM</option>
+                        <option value="11:00 AM">11:00 AM</option>
+                        <option value="12:00 PM">12:00 PM (Noon)</option>
+                        <option value="1:00 PM">1:00 PM</option>
+                        <option value="2:00 PM">2:00 PM</option>
+                        <option value="3:00 PM">3:00 PM</option>
+                        <option value="4:00 PM">4:00 PM</option>
+                        <option value="5:00 PM">5:00 PM</option>
+                        <option value="6:00 PM">6:00 PM</option>
+                        <option value="7:00 PM">7:00 PM</option>
+                        <option value="8:00 PM">8:00 PM</option>
+                        <option value="9:00 PM">9:00 PM</option>
+                        <option value="10:00 PM">10:00 PM</option>
+                        <option value="11:00 PM">11:00 PM</option>
+                        <option value="12:00 AM">12:00 AM (Midnight)</option>
+                    </select>
+                </div>
+
+                <!-- Range Time Selection View (Hidden by default) -->
+                <div id="range-time-container" class="hidden grid grid-cols-2 gap-3">
+                    <div class="space-y-1.5">
+                        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Start Time</label>
+                        <select id="start-time" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-2 py-3.5 focus:outline-none focus:border-blue-500 transition-all">
                             <option value="6:00 AM">6:00 AM</option>
                             <option value="7:00 AM">7:00 AM</option>
                             <option value="8:00 AM">8:00 AM</option>
-                            <option value="9:00 AM">9:00 AM</option>
+                            <option value="9:00 AM" selected>9:00 AM</option>
                             <option value="10:00 AM">10:00 AM</option>
                             <option value="11:00 AM">11:00 AM</option>
                             <option value="12:00 PM">12:00 PM</option>
@@ -163,18 +299,29 @@
                             <option value="4:00 PM">4:00 PM</option>
                             <option value="5:00 PM">5:00 PM</option>
                             <option value="6:00 PM">6:00 PM</option>
-                            <option value="7:00 PM">7:00 PM</option>
-                            <option value="8:00 PM">8:00 PM</option>
-                            <option value="9:00 PM">9:00 PM</option>
-                            <option value="10:00 PM">10:00 PM</option>
-                            <option value="11:00 PM">11:00 PM</option>
-                            <option value="12:00 AM">12:00 AM (Midnight)</option>
                         </select>
                     </div>
+                    <div class="space-y-1.5">
+                        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">End Time</label>
+                        <select id="end-time" class="w-full bg-slate-900/80 border border-slate-800 text-slate-200 rounded-xl px-2 py-3.5 focus:outline-none focus:border-blue-500 transition-all">
+                            <option value="7:00 AM">7:00 AM</option>
+                            <option value="8:00 AM">8:00 AM</option>
+                            <option value="9:00 AM">9:00 AM</option>
+                            <option value="10:00 AM">10:00 AM</option>
+                            <option value="11:00 AM" selected>11:00 AM</option>
+                            <option value="12:00 PM">12:00 PM</option>
+                            <option value="1:00 PM">1:00 PM</option>
+                            <option value="2:00 PM">2:00 PM</option>
+                            <option value="3:00 PM">3:00 PM</option>
+                            <option value="4:00 PM">4:00 PM</option>
+                            <option value="5:00 PM">5:00 PM</option>
+                            <option value="6:00 PM">6:00 PM</option>
+                            <option value="7:00 PM">7:00 PM</option>
+                        </select>
                     </div>
                 </div>
 
-                <button type="submit" id="submit-btn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-4 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all flex justify-center items-center h-14 mt-2">
+                <button type="submit" id="submit-btn" class="w-full bg-gradient-to-r from-blue-600 to-cyan-600 text-white font-bold py-3.5 rounded-xl shadow-lg shadow-blue-500/25 active:scale-95 transition-all flex justify-center items-center h-12 mt-2">
                     <span>Create Task</span>
                 </button>
             </form>
@@ -185,22 +332,83 @@
         let taskData = [];
         let activeTab = 'all';
 
-        // Phnom Penh Date Formatter for UI
-        document.getElementById('live-date').innerText = new Intl.DateTimeFormat('en-US', {
-            timeZone: 'Asia/Phnom_Penh', weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
-        }).format(new Date());
+        // ===== Flip-clock build & update =====
+        const CLOCK_SLOT_IDS = ['h1','h2','m1','m2','s1','s2'];
+        let clockBuilt = false;
+        let lastDigits = {};
 
-        // Spinner SVG Generator
+        function buildFlipClock() {
+            const container = document.getElementById('flip-clock');
+            container.innerHTML = `
+                <div class="digit-slot" id="slot-h1"><span>0</span></div>
+                <div class="digit-slot" id="slot-h2"><span>0</span></div>
+                <span class="clock-colon">:</span>
+                <div class="digit-slot" id="slot-m1"><span>0</span></div>
+                <div class="digit-slot" id="slot-m2"><span>0</span></div>
+                <span class="clock-colon">:</span>
+                <div class="digit-slot" id="slot-s1"><span>0</span></div>
+                <div class="digit-slot" id="slot-s2"><span>0</span></div>
+            `;
+            clockBuilt = true;
+        }
+
+        function setDigit(slotKey, value) {
+            if (lastDigits[slotKey] === value) return;
+            lastDigits[slotKey] = value;
+            const slot = document.getElementById(`slot-${slotKey}`);
+            if (!slot) return;
+            const span = slot.querySelector('span');
+            if (!span) return;
+            span.textContent = value;
+            span.classList.remove('digit-pop');
+            void span.offsetWidth; // force reflow so the animation restarts every time
+            span.classList.add('digit-pop');
+        }
+
+        // Real-Time Clock & Date (Asia/Phnom_Penh)
+        function updateClockAndDate() {
+            if (!clockBuilt) buildFlipClock();
+            const now = new Date();
+
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Phnom_Penh',
+                hour: '2-digit', minute: '2-digit', second: '2-digit',
+                hour12: true
+            }).formatToParts(now);
+
+            const get = (type) => parts.find(p => p.type === type)?.value ?? '00';
+            const hh = get('hour').padStart(2, '0');
+            const mm = get('minute').padStart(2, '0');
+            const ss = get('second').padStart(2, '0');
+            const meridiem = get('dayPeriod').toUpperCase();
+
+            setDigit('h1', hh[0]);
+            setDigit('h2', hh[1]);
+            setDigit('m1', mm[0]);
+            setDigit('m2', mm[1]);
+            setDigit('s1', ss[0]);
+            setDigit('s2', ss[1]);
+            document.getElementById('meridiem').textContent = meridiem;
+
+            // Format Date
+            document.getElementById('live-date').innerText = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'Asia/Phnom_Penh',
+                weekday: 'long', month: 'short', day: 'numeric', year: 'numeric'
+            }).format(now);
+        }
+
+        // Run immediately and update every second
+        updateClockAndDate();
+        setInterval(updateClockAndDate, 1000);
+
         const getSpinner = (color) => `<svg class="animate-spin h-5 w-5 ${color}" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24"><circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle><path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>`;
 
         function openModal() {
             const modal = document.getElementById('task-modal');
             const box = document.getElementById('modal-box');
             modal.classList.remove('opacity-0', 'pointer-events-none');
-            // Desktop scale animation
             box.classList.remove('sm:scale-95');
             box.classList.add('sm:scale-100');
-            // Mobile slide up animation
             box.classList.remove('translate-y-full');
             box.classList.add('translate-y-0');
         }
@@ -215,9 +423,22 @@
             box.classList.add('translate-y-full');
         }
 
+        function toggleRangeInputs(isRangeChecked) {
+            const single = document.getElementById('single-time-container');
+            const range = document.getElementById('range-time-container');
+            if (isRangeChecked) {
+                single.classList.add('hidden');
+                range.classList.remove('hidden');
+            } else {
+                range.classList.add('hidden');
+                single.classList.remove('hidden');
+            }
+        }
+
         function timeToMinutes(timeStr) {
-            if (!timeStr || timeStr === 'Anytime') return 1440; 
-            const match = timeStr.match(/(\d+):(\d+)\s*(AM|PM)/i);
+            if (!timeStr || timeStr === 'Anytime') return 1440;
+            const actualTime = timeStr.includes(' - ') ? timeStr.split(' - ')[0] : timeStr;
+            const match = actualTime.match(/(\d+):(\d+)\s*(AM|PM)/i);
             if (!match) return 1440;
             let h = parseInt(match[1], 10), m = parseInt(match[2], 10), mod = match[3].toUpperCase();
             if (mod === 'PM' && h < 12) h += 12;
@@ -243,9 +464,18 @@
         document.getElementById('create-task-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const input = document.getElementById('task-input');
+            const isRange = document.getElementById('range-toggle').checked;
+
+            let finalTime = 'Anytime';
+            if (isRange) {
+                const start = document.getElementById('start-time').value;
+                const end = document.getElementById('end-time').value;
+                finalTime = `${start} - ${end}`;
+            } else {
+                finalTime = document.getElementById('task-time').value;
+            }
+
             const btn = document.getElementById('submit-btn');
-            
-            // Show Loading Spinner on Button
             const originalText = btn.innerHTML;
             btn.innerHTML = getSpinner('text-white');
             btn.disabled = true;
@@ -254,10 +484,10 @@
                 const res = await fetch('/api/tasks', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        title: input.value, 
+                    body: JSON.stringify({
+                        title: input.value,
                         category: document.getElementById('task-type').value,
-                        task_time: document.getElementById('task-time').value 
+                        task_time: finalTime
                     })
                 });
                 if (res.ok) {
@@ -265,7 +495,7 @@
                     closeModal();
                     await loadTasks();
                 }
-            } catch (err) { console.error(err); } 
+            } catch (err) { console.error(err); }
             finally {
                 btn.innerHTML = originalText;
                 btn.disabled = false;
@@ -284,7 +514,6 @@
         }
 
         async function removeTask(id, btnElement) {
-            // Show Loading Spinner on Trash Icon
             const originalHtml = btnElement.innerHTML;
             btnElement.innerHTML = getSpinner('text-red-400');
             btnElement.disabled = true;
@@ -292,8 +521,8 @@
             try {
                 await fetch(`/api/tasks/${id}`, { method: 'DELETE' });
                 await loadTasks();
-            } catch (err) { 
-                console.error(err); 
+            } catch (err) {
+                console.error(err);
                 btnElement.innerHTML = originalHtml;
                 btnElement.disabled = false;
             }
@@ -348,8 +577,6 @@
             const percentage = total === 0 ? 0 : Math.round((completed / total) * 100);
 
             document.getElementById('progress-percent').innerText = `${percentage}%`;
-            
-            // Circumference for r=38 is ~238.76
             const offset = 238.76 - (percentage / 100) * 238.76;
             document.getElementById('progress-circle').style.strokeDashoffset = offset;
         }
