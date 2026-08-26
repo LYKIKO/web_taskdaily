@@ -1,15 +1,14 @@
 {
-  "name": "daily-tasks-db",
+  "name": "taskdaily",
   "version": "1.0.0",
-  "description": "Daily task tracker backed by MySQL",
+  "description": "Modern Daily and Custom Task Manager",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
-    "mysql2": "^3.11.0"
+    "mysql2": "^3.9.2"
   }
 }
