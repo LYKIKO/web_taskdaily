@@ -1,161 +1,163 @@
 require('dotenv').config();
 const express = require('express');
-const cors = require('cors');
 const mysql = require('mysql2/promise');
 const path = require('path');
-const crypto = require('crypto');
 
 const app = express();
-app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Database Connection Pool
 const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  waitForConnections: true,
-  connectionLimit: 10,
-  ssl: { rejectUnauthorized: false }
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT || 16751,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+    waitForConnections: true,
+    connectionLimit: 10,
+    queueLimit: 0
 });
 
-async function initDb() {
-  const conn = await pool.getConnection();
-  try {
-    await conn.query(`
-      CREATE TABLE IF NOT EXISTS tasks (
-        id VARCHAR(64) PRIMARY KEY,
-        name VARCHAR(255) NOT NULL,
-        type ENUM('daily', 'custom') NOT NULL DEFAULT 'custom',
-        priority ENUM('normal', 'high') NOT NULL DEFAULT 'normal',
-        done TINYINT(1) NOT NULL DEFAULT 0,
-        last_done_date DATE NULL,
-        created_at BIGINT NOT NULL
-      )
-    `);
-    console.log('Database ready: tasks table exists.');
-  } finally {
-    conn.release();
-  }
+// Helper function to get strict Phnom Penh Date (YYYY-MM-DD)
+function getPhnomPenhDate() {
+    const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Phnom_Penh',
+        year: 'numeric', month: '2-digit', day: '2-digit'
+    });
+    const parts = formatter.formatToParts(new Date());
+    const year = parts.find(p => p.type === 'year').value;
+    const month = parts.find(p => p.type === 'month').value;
+    const day = parts.find(p => p.type === 'day').value;
+    return `${year}-${month}-${day}`;
 }
 
-function todayStr() {
-  const d = new Date();
-  return d.toISOString().slice(0, 10); // YYYY-MM-DD
-}
+// Auto-Migration & Table Verification
+async function initDB() {
+    let connection;
+    try {
+        connection = await pool.getConnection();
+        
+        await connection.execute(`
+            CREATE TABLE IF NOT EXISTS tasks (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                title VARCHAR(255) NOT NULL,
+                category ENUM('daily', 'custom') DEFAULT 'daily',
+                task_time VARCHAR(50) DEFAULT NULL,
+                completed TINYINT(1) DEFAULT 0,
+                last_completed_date DATE DEFAULT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        `);
 
-// Reset daily tasks that were completed on a previous day
-async function resetStaleDailyTasks() {
-  await pool.query(
-    `UPDATE tasks
-     SET done = 0, last_done_date = NULL
-     WHERE type = 'daily' AND done = 1 AND (last_done_date IS NULL OR last_done_date <> ?)`,
-    [todayStr()]
-  );
-}
+        // Safely add missing columns if they don't exist
+        const [timeCols] = await connection.execute(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'task_time'`, [process.env.DB_NAME]);
+        if (timeCols.length === 0) await connection.execute(`ALTER TABLE tasks ADD COLUMN task_time VARCHAR(50) DEFAULT NULL`);
 
-// GET all tasks
+        const [dateCols] = await connection.execute(`SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'tasks' AND COLUMN_NAME = 'last_completed_date'`, [process.env.DB_NAME]);
+        if (dateCols.length === 0) await connection.execute(`ALTER TABLE tasks ADD COLUMN last_completed_date DATE DEFAULT NULL`);
+
+        console.log('Database ready and synchronized (Phnom Penh Timezone Applied).');
+    } catch (err) {
+        console.error('Database initialization error:', err.message);
+    } finally {
+        if (connection) connection.release();
+    }
+}
+initDB();
+
+// Middleware: Automatic Daily Reset (Phnom Penh Time)
+app.use(async (req, res, next) => {
+    try {
+        const today = getPhnomPenhDate();
+        await pool.execute(
+            `UPDATE tasks 
+             SET completed = 0, last_completed_date = NULL 
+             WHERE category = 'daily' 
+             AND completed = 1 
+             AND (last_completed_date IS NULL OR last_completed_date < ?)`,
+            [today]
+        );
+    } catch (err) {
+        console.error('Error during daily reset check:', err.message);
+    }
+    next();
+});
+
+// API: Get All Tasks
 app.get('/api/tasks', async (req, res) => {
-  try {
-    await resetStaleDailyTasks();
-    const [rows] = await pool.query('SELECT * FROM tasks ORDER BY created_at DESC');
-    res.json(rows);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to fetch tasks', detail: err.message });
-  }
+    try {
+        const [rows] = await pool.execute(`
+            SELECT * FROM tasks 
+            ORDER BY 
+                completed ASC, 
+                CASE 
+                    WHEN task_time = 'Anytime' OR task_time IS NULL THEN '23:59'
+                    ELSE STR_TO_DATE(task_time, '%l:%i %p')
+                END ASC, 
+                id DESC
+        `);
+        res.json(rows);
+    } catch (err) {
+        try {
+            const [rowsFallback] = await pool.execute('SELECT * FROM tasks ORDER BY completed ASC, id DESC');
+            res.json(rowsFallback);
+        } catch (fallbackErr) {
+            res.status(500).json({ error: err.message });
+        }
+    }
 });
 
-// CREATE task
+// API: Create Task
 app.post('/api/tasks', async (req, res) => {
-  try {
-    const { name, type, priority } = req.body;
-    if (!name || !name.trim()) return res.status(400).json({ error: 'Task name is required' });
+    try {
+        const { title, category, task_time } = req.body;
+        if (!title || !title.trim()) return res.status(400).json({ error: 'Task title cannot be empty' });
+        
+        const taskCategory = category === 'custom' ? 'custom' : 'daily';
+        const formattedTime = task_time ? task_time : 'Anytime';
 
-    const id = 't_' + Date.now() + '_' + crypto.randomBytes(4).toString('hex');
-    const taskType = type === 'daily' ? 'daily' : 'custom';
-    const taskPriority = priority === 'high' ? 'high' : 'normal';
-    const createdAt = Date.now();
+        // Simulate slight network delay for satisfying spinner UI effect (optional, remove if you want instant)
+        await new Promise(r => setTimeout(r, 400)); 
 
-    await pool.query(
-      `INSERT INTO tasks (id, name, type, priority, done, last_done_date, created_at)
-       VALUES (?, ?, ?, ?, 0, NULL, ?)`,
-      [id, name.trim(), taskType, taskPriority, createdAt]
-    );
-
-    const [rows] = await pool.query('SELECT * FROM tasks WHERE id = ?', [id]);
-    res.status(201).json(rows[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to create task', detail: err.message });
-  }
+        const [result] = await pool.execute(
+            'INSERT INTO tasks (title, category, task_time, completed) VALUES (?, ?, ?, 0)',
+            [title.trim(), taskCategory, formattedTime]
+        );
+        res.json({ id: result.insertId, title: title.trim(), category: taskCategory, task_time: formattedTime, completed: 0 });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// TOGGLE done state
-app.patch('/api/tasks/:id/toggle', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const [rows] = await pool.query('SELECT * FROM tasks WHERE id = ?', [id]);
-    if (!rows.length) return res.status(404).json({ error: 'Task not found' });
+// API: Toggle Task Completion
+app.patch('/api/tasks/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { completed } = req.body;
+        const today = getPhnomPenhDate(); 
+        
+        const completedVal = completed ? 1 : 0;
+        const dateVal = completed ? today : null;
 
-    const task = rows[0];
-    const newDone = task.done ? 0 : 1;
-    const lastDoneDate = newDone ? todayStr() : null;
-
-    await pool.query('UPDATE tasks SET done = ?, last_done_date = ? WHERE id = ?', [
-      newDone,
-      lastDoneDate,
-      id
-    ]);
-
-    const [updated] = await pool.query('SELECT * FROM tasks WHERE id = ?', [id]);
-    res.json(updated[0]);
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to toggle task', detail: err.message });
-  }
+        await pool.execute('UPDATE tasks SET completed = ?, last_completed_date = ? WHERE id = ?', [completedVal, dateVal, id]);
+        res.json({ success: true, completed: completedVal });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
-// DELETE single task
+// API: Delete Task
 app.delete('/api/tasks/:id', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM tasks WHERE id = ?', [req.params.id]);
-    res.status(204).end();
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to delete task', detail: err.message });
-  }
-});
-
-// DELETE all completed tasks
-app.delete('/api/tasks-completed/all', async (req, res) => {
-  try {
-    await pool.query('DELETE FROM tasks WHERE done = 1');
-    res.status(204).end();
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to clear completed tasks', detail: err.message });
-  }
-});
-
-app.get('/api/health', async (req, res) => {
-  try {
-    await pool.query('SELECT 1');
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(500).json({ ok: false, error: err.message });
-  }
+    try {
+        const { id } = req.params;
+        await new Promise(r => setTimeout(r, 300)); // Slight delay for spinner visual
+        await pool.execute('DELETE FROM tasks WHERE id = ?', [id]);
+        res.json({ success: true });
+    } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
 });
 
 const PORT = process.env.PORT || 3000;
-
-initDb()
-  .then(() => {
-    app.listen(PORT, () => console.log(`Daily Tasks app running at http://localhost:${PORT}`));
-  })
-  .catch((err) => {
-    console.error('Failed to initialize database:', err.message);
-    process.exit(1);
-  });
+app.listen(PORT, () => console.log(`TaskDaily server online at http://localhost:${PORT}`));
